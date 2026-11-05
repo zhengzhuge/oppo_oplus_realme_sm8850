@@ -28,7 +28,6 @@ on:
         type: boolean
         default: 'true'
       kpm_enable:
-            kpm_enable:
         description: '是否开启kpm(使用KpatchNext独立实现kpm(支持任意KSU/面具环境); 不需要可保持默认关闭)'
         required: true
         type: boolean
@@ -704,7 +703,7 @@ jobs:
           key: ${{ env.CCACHE_REAL_KEY }}-${{ runner.os }}-${{ github.ref_name }}
          
       
-       - name: 应用 KernelPatch 0.13.9 (KPM) 并修补内核
+      - name: 应用 KernelPatch 0.13.9 (KPM) 并修补内核
         if: inputs.kpm_enable
         env:
           KP_VER: '0.13.9'
