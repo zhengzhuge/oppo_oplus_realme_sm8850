@@ -32,6 +32,11 @@ on:
         required: true
         type: boolean
         default: 'false'
+        kp_superkey:
+        description: 'KernelPatch 超密钥(superkey),仅 kpm_enable=true 时生效'
+        required: false
+        type: string
+        default: 'kpatchgki'
       lz4_enable:
         description: '是否安装 lz4 1.10.0+zstd 1.5.7 补丁'
         required: true
@@ -698,16 +703,41 @@ jobs:
           key: ${{ env.CCACHE_REAL_KEY }}-${{ runner.os }}-${{ github.ref_name }}
          
       - name: 应用KPM并修补内核
+            - name: 应用 KernelPatch 0.13.9 (KPM) 并修补内核
         if: inputs.kpm_enable
+        env:
+          KP_VER: '0.13.9'
+          KP_SKEY: ${{ github.event.inputs.kp_superkey || 'kpatchgki' }}
         run: |
-          echo "正在应用KP-N并修补内核..."
+          set -euo pipefail
+          echo "正在应用 KernelPatch ${KP_VER} 并修补内核..."
           cd kernel_workspace/common/out/arch/arm64/boot
-          wget https://github.com/KernelSU-Next/KPatch-Next/releases/latest/download/kptools-linux
-          wget https://github.com/KernelSU-Next/KPatch-Next/releases/latest/download/kpimg-linux
-          chmod +x ./kptools-linux
-          ./kptools-linux -p -i ./Image -k ./kpimg-linux -o ./oImage
-          rm -f Image
-          mv oImage Image
+
+          BASE="https://github.com/bmax121/KernelPatch/releases/download/${KP_VER}"
+          wget -q "${BASE}/kptools-linux" -O ./kptools
+          wget -q "${BASE}/kpimg-linux"   -O ./kpimg
+          chmod +x ./kptools
+          ./kptools -v
+
+          # 【可选】让 SukiSU/BakaSU 管理器自带的 KPM 页面仍可用：把握手串对齐 KPatch-Next
+          #   kpimg 里 hello1158 -> hello2026，长度相同，纯字节替换安全
+          # 纯上游 0.13.9 用法(用 truncate 命令加载 kpm)则保持注释
+          # sed -i 's/hello1158/hello2026/' ./kpimg
+
+          PRE=$(sha256sum ./Image | cut -d' ' -f1)
+          ./kptools -p -i ./Image -k ./kpimg -o ./oImage -s "${KP_SKEY}"
+          POST=$(sha256sum ./oImage | cut -d' ' -f1)
+          if [ "$PRE" = "$POST" ]; then
+            echo "!! 补丁未生效，Image 未变化"; exit 1
+          fi
+
+          echo "--- 修补后 KP 段信息 ---"
+          ./kptools -l -i ./oImage || true
+          echo "--- 体积变化 ---"
+          ls -l ./Image ./oImage
+
+          rm -f ./Image ./kptools ./kpimg
+          mv ./oImage ./Image
           
       - name: 克隆 AnyKernel3 并打包
         id: create_zip
